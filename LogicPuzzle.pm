@@ -6,7 +6,7 @@ use strict;
 use warnings;
 use Carp;
 
-our $VERSION= 0.11;
+our $VERSION= 0.13;
 
 sub new {
     my $class = shift;
@@ -26,11 +26,21 @@ sub new {
 }
 
 # the "Computer Science" solution is to do recursion,
-# but that involves so many method calls its sick.
+# but that involves so many method calls, it's sick.
 # Instead, we autogenerate the code
 sub make_solve_code {
     my $self= shift();
+    my $code= "";
 
+    # autogenerate subroutines from possesions
+    # such that smoke(beverage=>'beer') = get('smoke',beverage=>'beer')
+    for my $poss (keys %{$self->{possesions}},
+                  keys %{$self->{assignlist}}  ) {
+       $code.= qq(
+           sub $poss { return \$_[0]->get('$poss',\$_[1],\$_[2]) };
+           );
+    }
+ 
     my @thing     = @{$self->{things}};
     my @solve_order;
     if ( $self->{solve_order} ) {
@@ -40,7 +50,7 @@ sub make_solve_code {
     }
 
     # setup code, disable warnings for verify
-    my $code = q(
+    $code.= q(
     my @thing     = @{$self->{things}};
     my %possesion = %{$self->{possesions}};
     local $^W;
@@ -315,76 +325,78 @@ This module solves this puzzle as follows:
     sub my_verify
     {
         my $c=      shift();
-        my @pers= @{shift()};
-        my $p;
-
+ 
     #   1. The Brit lives in a red house. 
-        $p = $c->get("housecolour", 
-                     "nationality" => "Brit");
-        return 0 if $p && $p ne "red";
+      { my $p = $c->housecolour(nationality => "Brit");
+        return 0 if $p && $p ne "red"; }
     #   2. The Swede keeps dogs as pets. 
-        $p = $c->get("pet",
-                     "nationality" => "Swede");
-        return 0 if $p && $p ne "dog";
+      { my $p = $c->pet(nationality => "Swede");
+        return 0 if $p && $p ne "dog"; }
     #   3. The Dane drinks tea. 
-        $p = $c->get("beverage",
-                     "nationality" => "Dane");
-        return 0 if $p && $p ne "tea";
+      { my $p = $c->beverage(nationality => "Dane");
+        return 0 if $p && $p ne "tea"; }
     #   4. The green house is on the left of the white house (next to it). 
-        $p1 = $c->get("houseposition", "housecolour" => "green");
-        $p2 = $c->get("houseposition", "housecolour" => "white");
+      { my $p1 = $c->houseposition(housecolour => "green");
+        my $p2 = $c->houseposition(housecolour => "white");
         return 0 if $p1 && $p2 && ( $p1 - $p2 != 1); #arbirary choice of left
+     }
     #   5. The green house owner drinks coffee. 
-        $p = $c->get("beverage", 
-                     "housecolour" => "green");
-        return 0 if $p && $p ne "coffee";
+      { my $p = $c->beverage(housecolour => "green");
+        return 0 if $p && $p ne "coffee"; }
     #   6. The person who smokes Pall Mall rears birds. 
-        $p = $c->get("pet",
-                     "smokebrand" => "PaulMaul");
-        return 0 if $p && $p ne "bird";
+      { my $p = $c->pet(smokebrand => "PaulMaul");
+        return 0 if $p && $p ne "bird"; }
     #   7. The owner of the yellow house smokes Dunhill. 
-        $p = $c->get("smokebrand",
-                     "housecolour" => "yellow");
-        return 0 if $p && $p ne "Dunhill";
+      { my $p = $c->smokebrand(housecolour => "yellow");
+        return 0 if $p && $p ne "Dunhill"; }
     #   8. The man living in the house right in the center drinks milk. 
-        $p = $c->get("beverage",
-                     "houseposition" => "3");
-        return 0 if $p && $p ne "milk";
+      { my $p = $c->beverage(houseposition => "3");
+        return 0 if $p && $p ne "milk"; }
     #   9. The Norwegian lives in the first house. 
-        $p = $c->get("houseposition",
-                     "nationality" => "Norwegian");
-        return 0 if $p && $p ne "1";
+      { my $p = $c->houseposition(nationality => "Norwegian");
+        return 0 if $p && $p ne "1"; }
     #  10. The man who smokes blend lives next to the one who keeps cats. 
-        $p1 = $c->get("houseposition", "smokebrand" => "Blend");
-        $p2 = $c->get("houseposition", "pet" =>  "cats");
-        return 0 if $p1 && $p2 && (abs($p2 - $p1) != 1);
+      { my $p1 = $c->houseposition(smokebrand => "Blend");
+        my $p2 = $c->houseposition(pet =>  "cats");
+        return 0 if $p1 && $p2 && (abs($p2 - $p1) != 1); }
     #  11. The man who keeps horses lives next to the man who smokes Dunhill. 
-        $p1 = $c->get("houseposition", "pet" => "horse");
-        $p2 = $c->get("houseposition", "smokebrand" => "Dunhill");
-        return 0 if $p1 && $p2 && (abs($p2 - $p1) != 1);
+      { my $p1 = $c->houseposition(pet => "horse");
+        my $p2 = $c->houseposition(smokebrand => "Dunhill");
+        return 0 if $p1 && $p2 && (abs($p2 - $p1) != 1); }
     #  12. The owner who smokes Blue Master drinks beer. 
-        $p = $c->get("beverage",
-                    "smokebrand" => "BlueMaster");
-        return 0 if $p && $p ne "beer";
+      { my $p = $c->beverage(smokebrand => "BlueMaster");
+        return 0 if $p && $p ne "beer"; }
     #  13. The German smokes Prince. 
-        $p = $c->get("smokebrand",
-                     "nationality" => "German");
-        return 0 if $p && $p ne "Prince";
+      { my $p = $c->smokebrand(nationality => "German");
+        return 0 if $p && $p ne "Prince"; }
     #  14. The Norwegian lives next to the blue house. 
-        $p1 = $c->get("houseposition", "nationality" => "Norwegian");
-        $p2 = $c->get("houseposition", "housecolour" => "blue");
-        return 0 if $p1 && $p2 && (abs($p2 - $p1) != 1);
+      { my $p1 = $c->houseposition(nationality => "Norwegian");
+        my $p2 = $c->houseposition(housecolour => "blue");
+        return 0 if $p1 && $p2 && (abs($p2 - $p1) != 1); }
     #  15. The man who smokes blend has a neighbor who drinks water. 
-        $p1 = $c->get("houseposition", "smokebrand" => "Blend");
-        $p2 = $c->get("houseposition", "beverage" => "water");
-        return 0 if $p1 && $p2 && (abs($p2 - $p1) != 1);
-
+      { my $p1 = $c->houseposition(smokebrand => "Blend");
+        my $p2 = $c->houseposition(beverage => "water");
+        return 0 if $p1 && $p2 && (abs($p2 - $p1) != 1); }
+ 
         return 1;
     }
 
 The heart of the solution is the &verify subroutine. Here
 is where the puzzle details are translated into a definition
 of a valid solution.
+
+Within the verify subroutine, we call 'get' with various
+parameters to extract the current solution scenario. This
+is then tested to see if it is correct. If the current
+scenario is 'undef' then that should be verified as 'ok'
+
+A number of 'convenience' subroutines are autodefined, so
+that you can do 1) instead of 2).
+
+   1)  my $p = $c->housecolour(nationality => "Brit");
+
+   2)  my $p = $c->get("housecolour", 
+                      "nationality" => "Brit");
 
 When $p->solve() is called, Games::LogicPuzzle will
 (somewhat intelligently) iterate through the solution space
