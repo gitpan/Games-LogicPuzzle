@@ -1,12 +1,12 @@
 package Games::LogicPuzzle;
 # Perl module to help solve some logic riddles
-# (C) 2003 Andy Adler
+# (C) 2004 Andy Adler
 
 use strict;
 use warnings;
 use Carp;
 
-our $VERSION= 0.10;
+our $VERSION= 0.11;
 
 sub new {
     my $class = shift;
@@ -134,22 +134,28 @@ sub initialize {
     $self->{initialized}= 1;
 }
 
+# get all things (pers) who have $cat eq $val
+sub getpers {
+    my ($things, $cat, $val) = @_;
+
+    return undef unless defined $val;
+    my @getpers= grep { $_->{$cat} and 
+                        $_->{$cat} eq $val } @$things;
+
+    return @getpers;
+}
 
 # get the $want possession of the thing who's $cat is $val
 sub get {
     my ($self, $want, $cat, $val, $soln) = @_;
-    my @pers = @{$self->{things}};
-       @pers = @{$soln} if $soln;
 
-    #TODO: this could be plenty more efficient
-    for my $pers (@pers) {
-        next unless $pers->{$cat};
-        if ( $pers->{$cat} eq $val ) {
-            return $pers->{$want};
-        }
-    }
+    my $things= $self->{things};
+       $things= $soln if $soln;
+    my @getpers= getpers($things, $cat, $val );
 
-    return undef;
+    return undef unless @getpers;
+    my @getwant= map {$_->{$want}} @getpers;
+    return $getwant[0];
 }
 
 
@@ -317,7 +323,7 @@ This module solves this puzzle as follows:
                      "nationality" => "Brit");
         return 0 if $p && $p ne "red";
     #   2. The Swede keeps dogs as pets. 
-        $p = $c->get("dog",
+        $p = $c->get("pet",
                      "nationality" => "Swede");
         return 0 if $p && $p ne "dog";
     #   3. The Dane drinks tea. 
@@ -389,7 +395,7 @@ set a variety of other parameters.
 
 =head1 AUTHOR
 
-Andy Adler < andy at analyti dot ca >
+Andy Adler < adler at site dot uOttawa dot ca >
 
 All Rights Reserved. This module is free software. It may be used,
 redistributed and/or modified under the same terms as Perl itself.
