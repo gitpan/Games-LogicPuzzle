@@ -1,12 +1,13 @@
 package Games::LogicPuzzle;
 # Perl module to help solve some logic riddles
 # (C) 2004 Andy Adler
+# $Id: LogicPuzzle.pm,v 1.6 2006/01/30 20:47:09 adler Exp $
 
 use strict;
 use warnings;
 use Carp;
 
-our $VERSION= 0.13;
+our $VERSION= 0.20;
 
 sub new {
     my $class = shift;
@@ -27,15 +28,17 @@ sub new {
 
 # the "Computer Science" solution is to do recursion,
 # but that involves so many method calls, it's sick.
-# Instead, we autogenerate the code
+# Instead, we autogenerate code to iterate though 
+#  problem space
 sub make_solve_code {
     my $self= shift();
     my $code= "";
 
-    # autogenerate subroutines from possesions
+    # autogenerate subroutines from properties
     # such that smoke(beverage=>'beer') = get('smoke',beverage=>'beer')
-    for my $poss (keys %{$self->{possesions}},
-                  keys %{$self->{assignlist}}  ) {
+    my %proplist= ( %{$self->{properties}},
+                    %{$self->{assignlist}} );
+    for my $poss (keys %proplist) {
        $code.= qq(
            sub $poss { return \$_[0]->get('$poss',\$_[1],\$_[2]) };
            );
@@ -46,24 +49,32 @@ sub make_solve_code {
     if ( $self->{solve_order} ) {
         @solve_order = @{$self->{solve_order}};
     } else {
-        @solve_order = keys %{$self->{possesions}};
+        @solve_order = keys %{$self->{properties}};
     }
 
     # setup code, disable warnings for verify
     $code.= q(
     my @thing     = @{$self->{things}};
-    my %possesion = %{$self->{possesions}};
+    my %possesion = %{$self->{properties}};
     local $^W;
     LOOP:);
 
     # loop through all the possibilities
+    #    thus we loop through each property of each thing
+    #       ie $thing[ num_things ]->{ property_list }
+    #    unless that $thing already has a property
+    my $brace_count = 0;
     for my $p ( @solve_order ) {
         for my $t ( 0 .. $#thing ) {
-            $code .= sprintf q(
+            if( not defined $self->{things}->[ $t ] ->{ $p } ){
+               $code .= sprintf q(
     for (@{$possesion{ "%s" }}) {
-        local $thing[ %d ]->{ "%s" } = $_;
+        local $thing[ %d ]->{"%s"} = $_;
         next unless $self->verify(); ),
-        $p , $t, $p;
+               $p , $t, $p, $t, $p;
+
+               $brace_count++;
+            }
         }
     }
     
@@ -73,12 +84,7 @@ sub make_solve_code {
     last LOOP unless $self->{all_solutions};);
 
     # add all the close braces for the code
-    for my $p ( @solve_order ) {
-        for my $t ( 0 .. $#thing ) {
-            $code .= q(
-    });
-        }
-    }
+    $code.= " }" x $brace_count;
 
     return $code;
 }
@@ -89,7 +95,7 @@ sub solve {
     my $code = $self->make_solve_code();
 
     my @solutions;
-    eval $code;
+    eval $code; croak $@ if $@;
 
     return undef unless @solutions;
     return $solutions[0] unless $self->{all_solutions};
@@ -111,7 +117,7 @@ sub verify {
 sub verify_not_same {
     my $self= shift;
     my @things= @{$self->{things}};
-    my @posses= keys %{$self->{possesions}};
+    my @posses= keys %{$self->{properties}};
     for my $cat (@posses) {
         my %verif;
         for my $thing (@things) {
@@ -128,7 +134,7 @@ sub verify_not_same {
 sub initialize {
     my $self = shift;
     my @things= ();
-    my @posses= keys %{$self->{possesions}};
+    my @posses= keys %{$self->{properties}};
     my @assign= keys %{$self->{assignlist}};
     for my $n (1 .. $self->{num_things}) {
         my %thing;
@@ -171,7 +177,7 @@ sub get {
 
 my %cmds = (
     num_things => \&num_things,
-    possesions => \&possesions,
+    properties => \&properties,
     sameok => \&sameok,
     verify_proc => \&verify_proc,
 );
@@ -191,10 +197,10 @@ sub num_things {
     $self->{num_things}= shift();
 }
 
-# possesions are properties to be distributed to things
-sub possesions {
+# properties are properties to be distributed to things
+sub properties {
     my $self = shift;
-    $self->{possesions}= shift();
+    $self->{properties}= shift();
 }
 
 # assign are properties that are preassigned to things
@@ -243,7 +249,7 @@ LogicPuzzle - Perl extension for helping to solve brain teaser puzzles
         num_things => 5
     );
     $p->assign( { ... } );
-    $p->possesions( { ... } );
+    $p->properties( { ... } );
     $p->verify_proc( \&my_verify );
 
     $solution = $p->solve();
@@ -256,7 +262,7 @@ local subroutine which rejects wrong solutions, give
 the module the working parameters, and it will do the
 rest.
 
-=head1 EXAMPLE
+=head1 EXAMPLES
 
 I initially used this to help me solve the famous problem
 attributed to Einstein. Details and a manual solution can
@@ -303,7 +309,7 @@ This module solves this puzzle as follows:
         houseposition=> [ 1 .. 5 ],
     } );
 
-    $p->possesions( {
+    $p->properties( {
         housecolour => [qw(blue green red white yellow)],
         nationality => [qw(Brit Dane German Norwegian Swede)],
         beverage    => [qw(beer coffee milk tea water)],
@@ -405,9 +411,135 @@ to find a solution that satisfies &verify.
 There are additional methods to get all valid solutions, and
 set a variety of other parameters.
 
+=head2 SAMPLE PUZZLE: SUDOKU
+
+This module can also be used to solve Sudoku puzzles. The
+following solution code will work for a smaller, 4x4 
+Sudoku puzzle.
+
+=head2 SOLUTION CODE
+
+   use Games::LogicPuzzle;
+   my $p= new Games::LogicPuzzle (
+       num_things => 16,
+       sameok     => 1,
+   );
+
+   $p->properties( {
+       VAL => [1 .. 4],
+   } );
+
+   $p->assign( {
+       POS=> [ 11,    12,    13,    14,
+               21,    22,    23,    24,
+               31,    32,    33,    34,
+               41,    42,    43,    44, ],
+       VAL=>[  1,     2, undef, undef,
+               3,     4,     1,     2,
+               4,     3,     2, undef,
+               2,     1,     4,     3, ],
+   } );
+
+This sets up the problem. There are
+num_things = 16 grids on the board, of which
+$p->properties says each can have 1 .. 4 as values.
+The code in $p->assign will set the initial values
+
+   $p->verify_proc( \&my_verify );
+
+   my $soln= $p->solve();
+
+   # print soln
+   for my $y ( 1 .. 4 ) {
+      for my $x ( 1 .. 4 ) {
+         my $v = $p->get("VAL", "POS" => "$x$y", $soln);
+         print " $v ";
+         print "|" if $x % 2 ==0;
+      }
+         print "\n";
+         print "-----------------------\n" if $y % 2 ==0;
+   }
+
+   print $who;
+
+   # test whether all the elements in a group are unique
+   # call as sudoku_test ($c,11,12,21,22)
+   sub sudoku_test {
+      my $c= shift();
+      my %vals;
+
+      for (@_) {
+        my $val= $c->VAL(POS=>$_);
+        next unless $val;
+        return 0 if ++$vals{$val} > 1;
+      }
+
+      return 1;
+   }
+
+   sub my_verify
+   {
+       my $c=      shift();
+
+       return 0 unless sudoku_test($c, 11, 12, 21, 22);
+       return 0 unless sudoku_test($c, 31, 32, 41, 42);
+       return 0 unless sudoku_test($c, 13, 14, 23, 24);
+       return 0 unless sudoku_test($c, 33, 34, 43, 44);
+       return 0 unless sudoku_test($c, 11, 12, 13, 14);
+       return 0 unless sudoku_test($c, 21, 22, 23, 24);
+       return 0 unless sudoku_test($c, 31, 32, 33, 34);
+       return 0 unless sudoku_test($c, 41, 42, 43, 44);
+       return 0 unless sudoku_test($c, 11, 21, 31, 41);
+       return 0 unless sudoku_test($c, 12, 22, 32, 42);
+       return 0 unless sudoku_test($c, 13, 23, 33, 43);
+       return 0 unless sudoku_test($c, 14, 24, 34, 44);
+       return 1;
+   }
+
+=head2 SOLUTION CODE for full size Sudoku
+
+For the full 9x9 Sudoku, the test matrix needs to be 
+expanded, and we see a solution slowing - down to about
+5.5 minutes on my Old P3 Laptop.
+
+Here is the test matrix, other changes are num_things= 81,
+and $p->properties has VAL= 1..9 
+
+   # test rows
+       return 0 unless sudoku_test($c, 11, 12, 13, 14, 15, 16, 17, 18, 19);
+       return 0 unless sudoku_test($c, 21, 22, 23, 24, 25, 26, 27, 28, 29);
+       return 0 unless sudoku_test($c, 31, 32, 33, 34, 35, 36, 37, 38, 39);
+       return 0 unless sudoku_test($c, 41, 42, 43, 44, 45, 46, 47, 48, 49);
+       return 0 unless sudoku_test($c, 51, 52, 53, 54, 55, 56, 57, 58, 59);
+       return 0 unless sudoku_test($c, 61, 62, 63, 64, 65, 66, 67, 68, 69);
+       return 0 unless sudoku_test($c, 71, 72, 73, 74, 75, 76, 77, 78, 79);
+       return 0 unless sudoku_test($c, 81, 82, 83, 84, 85, 86, 87, 88, 89);
+       return 0 unless sudoku_test($c, 91, 92, 93, 94, 95, 96, 97, 98, 99);
+   # test cols
+       return 0 unless sudoku_test($c, 11, 21, 31, 41, 51, 61, 71, 81, 91);
+       return 0 unless sudoku_test($c, 12, 22, 32, 42, 52, 62, 72, 82, 92);
+       return 0 unless sudoku_test($c, 13, 23, 33, 43, 53, 63, 73, 83, 93);
+       return 0 unless sudoku_test($c, 14, 24, 34, 44, 54, 64, 74, 84, 94);
+       return 0 unless sudoku_test($c, 15, 25, 35, 45, 55, 65, 75, 85, 95);
+       return 0 unless sudoku_test($c, 16, 26, 36, 46, 56, 66, 76, 86, 96);
+       return 0 unless sudoku_test($c, 17, 27, 37, 47, 57, 67, 77, 87, 97);
+       return 0 unless sudoku_test($c, 18, 28, 38, 48, 58, 68, 78, 88, 98);
+       return 0 unless sudoku_test($c, 19, 29, 39, 49, 59, 69, 79, 89, 99);
+   # test blocks
+       return 0 unless sudoku_test($c, 11, 12, 13, 21, 22, 23, 31, 32, 33);
+       return 0 unless sudoku_test($c, 41, 42, 43, 51, 52, 53, 61, 62, 63);
+       return 0 unless sudoku_test($c, 71, 72, 73, 81, 82, 83, 91, 92, 93);
+       return 0 unless sudoku_test($c, 14, 15, 16, 24, 25, 26, 34, 35, 36);
+       return 0 unless sudoku_test($c, 44, 45, 46, 54, 55, 56, 64, 65, 66);
+       return 0 unless sudoku_test($c, 74, 75, 76, 84, 85, 86, 94, 95, 96);
+       return 0 unless sudoku_test($c, 17, 18, 19, 27, 28, 29, 37, 38, 39);
+       return 0 unless sudoku_test($c, 47, 48, 49, 57, 58, 59, 67, 68, 69);
+       return 0 unless sudoku_test($c, 77, 78, 79, 87, 88, 89, 97, 98, 99);
+
+
 =head1 AUTHOR
 
-Andy Adler < adler at site dot uOttawa dot ca >
+Andy Adler < andy at analyti dot ca >
 
 All Rights Reserved. This module is free software. It may be used,
 redistributed and/or modified under the same terms as Perl itself.

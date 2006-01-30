@@ -1,9 +1,4 @@
-# Before `make install' is performed this script should be runnable with
-# `make test'. After `make install' it should work as `perl test.pl'
-
-#########################
-
-# change 'tests => 1' to 'tests => last_test_to_print';
+# $Id: 01-word-puzzle.t,v 1.3 2006/01/30 20:04:15 adler Exp $
 
 use Test;
 BEGIN { plan tests => 1 };
@@ -17,7 +12,7 @@ $p->assign( {
     houseposition=> [ 1 .. 5 ],
 } );
 
-$p->possesions( {
+$p->properties( {
     housecolour => [qw(blue green red white yellow)],
     nationality => [qw(Brit Dane German Norwegian Swede)],
     beverage    => [qw(beer coffee milk tea water)],
@@ -25,6 +20,7 @@ $p->possesions( {
     pet         => [qw(cat bird fish horse dog)],
 } );
 
+# This is not necessary, but the solution is slower for this problem
 $p->solve_order( [
     "housecolour", "nationality", "beverage", "smokebrand", "pet", ] );
 
@@ -36,6 +32,12 @@ my $who = $p->get("nationality", "pet" => "fish", $soln);
 
 ok ($who, "German" );
 
+sub check {
+    my $var = shift;
+    return 1 if ( not defined $var ) or $var;
+    return 0;
+}
+ 
 sub my_verify
 {
     my $c=      shift();
@@ -43,6 +45,7 @@ sub my_verify
 #   1. The Brit lives in a red house. 
   { my $p = $c->housecolour(nationality => "Brit");
     return 0 if $p && $p ne "red"; }
+#   return 0 unless check( $c->housecolour(nationality => "Brit") eq "red" );
 #   2. The Swede keeps dogs as pets. 
   { my $p = $c->pet(nationality => "Swede");
     return 0 if $p && $p ne "dog"; }
